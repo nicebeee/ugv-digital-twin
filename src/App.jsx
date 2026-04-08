@@ -59,8 +59,8 @@ export default function App() {
         padding:'6px 18px', display:'flex', alignItems:'center', gap:12, flexShrink:0 }}>
         <span style={{ fontSize:20 }}>🚜</span>
         <div>
-          <div style={{ color: C.accent, fontWeight:700, fontSize:14, lineHeight:1 }}>UGV Digital Twin</div>
-          <div style={{ color: C.text3, fontSize:10 }}>Цифровой двойник сельскохозяйственного робота</div>
+          <div style={{ color: C.accent, fontWeight:700, fontSize:14, lineHeight:1 }}>Аграрно-технологический факультет</div>
+          <div style={{ color: C.text3, fontSize:10 }}>Кафедра Агроинженерия</div>
         </div>
         <div style={{ marginLeft:'auto', display:'flex', gap:20, alignItems:'center' }}>
           <Badge label="Платформа" value={params.robotType}  />
