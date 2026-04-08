@@ -7,16 +7,13 @@ import { OrbitControls, ContactShadows, Environment } from '@react-three/drei'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader'
 import * as THREE from 'three'
 
-// CDN для полных моделей (GitHub Releases)
-const CDN_BASE = 'https://github.com/nicebeee/ugv-digital-twin/releases/download/models-v1'
-
 const STL_PATHS = {
-  wheel_4wd:      `${CDN_BASE}/wheel_4wd.stl`,
-  wheel_6wd:      `${CDN_BASE}/wheel_6wd.stl`,
-  tracked_rubber: `${CDN_BASE}/tracked_rubber.stl`,
-  tracked:        `${CDN_BASE}/tracked.stl`,
-  legged_4:       `${CDN_BASE}/legged_4.stl`,
-  omni:           `${CDN_BASE}/omni.stl`,
+  wheel_4wd:      '/models/wheel_4wd.stl',
+  wheel_6wd:      '/models/wheel_6wd.stl',
+  tracked_rubber: '/models/tracked_rubber.stl',
+  tracked:        '/models/tracked.stl',
+  legged_4:       '/models/legged_4.stl',
+  omni:           '/models/omni.stl',
 }
 
 function getStlUrl(id) {

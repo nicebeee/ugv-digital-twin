@@ -23,8 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Тяжёлые 3D-модели — грузятся отдельно с GitHub Releases CDN
-public/models/
+# Упрощённые модели (не нужны онлайн)
 public/models-small/
 
 # Временные файлы
