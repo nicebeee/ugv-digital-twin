@@ -85,7 +85,7 @@ function ScoreCell({ score }) {
           }}/>
         ))}
       </div>
-      <div style={{ color, fontSize:9, fontWeight:700 }}>{Math.round(pct)}%</div>
+      <div style={{ color, fontSize:11, fontWeight:700 }}>{Math.round(pct)}%</div>
     </td>
   )
 }
@@ -103,7 +103,7 @@ function RadarComp({ robot }) {
     <ResponsiveContainer width="100%" height={180}>
       <RadarChart data={data} margin={{ top:10, right:20, bottom:10, left:20 }}>
         <PolarGrid stroke={C.border} />
-        <PolarAngleAxis dataKey="axis" tick={{ fill:C.text3, fontSize:9 }} />
+        <PolarAngleAxis dataKey="axis" tick={{ fill:C.text3, fontSize:11 }} />
         <PolarRadiusAxis domain={[0,100]} tick={false} axisLine={false} />
         <Radar dataKey="value" stroke={robot.color} fill={robot.color} fillOpacity={0.25} strokeWidth={2} />
       </RadarChart>
@@ -172,8 +172,8 @@ export default function PlatformTab({ params, setParam }) {
               </div>
               <div style={{ padding:'6px 8px' }}>
                 <div style={{ color: sel ? r.color : C.text2, fontWeight: sel?700:500,
-                  fontSize:11, textAlign:'center', lineHeight:1.3 }}>{r.label}</div>
-                <div style={{ color: sel ? C.accent : C.text3, fontSize:10, textAlign:'center' }}>
+                  fontSize:13, textAlign:'center', lineHeight:1.3 }}>{r.label}</div>
+                <div style={{ color: sel ? C.accent : C.text3, fontSize:12, textAlign:'center' }}>
                   {r.specs.maxSpeed} км/ч · {r.specs.payload} кг
                 </div>
               </div>
@@ -195,16 +195,16 @@ export default function PlatformTab({ params, setParam }) {
             />
             <div style={{ position:'absolute', top:6, left:'50%', transform:'translateX(-50%)',
               background:'#00000077', borderRadius:6, padding:'3px 10px', pointerEvents:'none' }}>
-              <span style={{ color:robot.color, fontWeight:700, fontSize:11 }}>{robot.label}</span>
+              <span style={{ color:robot.color, fontWeight:700, fontSize:13 }}>{robot.label}</span>
             </div>
           </div>
           <div style={{ padding:'6px 10px', background:C.bg2, borderTop:`1px solid ${C.border}` }}>
-            <div style={{ color:C.text3, fontSize:8, textAlign:'center', marginBottom:4 }}>
+            <div style={{ color:C.text3, fontSize:10, textAlign:'center', marginBottom:4 }}>
               Нормализованные характеристики [0–100%]
             </div>
             <RadarComp robot={robot} />
             <button onClick={() => setAutoRotate(v=>!v)} style={{
-              width:'100%', marginTop:4, padding:'3px 0', borderRadius:6, fontSize:9,
+              width:'100%', marginTop:4, padding:'3px 0', borderRadius:6, fontSize:11,
               border:`1px solid ${autoRotate ? C.accent : C.border}`,
               background:'transparent', color: autoRotate ? C.accent : C.text3, cursor:'pointer',
             }}>
@@ -215,10 +215,10 @@ export default function PlatformTab({ params, setParam }) {
 
         {/* ЦЕНТР: Матрица пригодности */}
         <div style={{ flex:1, overflow:'auto', padding:'12px 14px' }}>
-          <div style={{ color:C.accent, fontWeight:700, fontSize:14, marginBottom:6 }}>
+          <div style={{ color:C.accent, fontWeight:700, fontSize:16, marginBottom:6 }}>
             📋 Матрица пригодности платформ для агрозадач
           </div>
-          <div style={{ color:C.text3, fontSize:11, marginBottom:12 }}>
+          <div style={{ color:C.text3, fontSize:13, marginBottom:12 }}>
             Оценка рассчитана по формуле взвешенной суммы нормализованных характеристик:
             &nbsp;<span style={{ fontFamily:'monospace', color:C.accent2 }}>S(p,t) = Σ wᵢ · xᵢ</span>
             , где wᵢ — вес критерия для задачи t, xᵢ ∈ [0,1]
@@ -228,7 +228,7 @@ export default function PlatformTab({ params, setParam }) {
           <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
             {TASKS.map(t => (
               <button key={t.id} onClick={() => setSelectedTask(t.id)} style={{
-                padding:'5px 12px', borderRadius:8, border:'none', fontSize:11,
+                padding:'5px 12px', borderRadius:8, border:'none', fontSize:13,
                 cursor:'pointer', fontWeight: selectedTask===t.id ? 700 : 400,
                 background: selectedTask===t.id ? C.accent : C.bg3,
                 color:      selectedTask===t.id ? '#0d1525' : C.text3,
@@ -239,28 +239,28 @@ export default function PlatformTab({ params, setParam }) {
           {/* Рекомендация */}
           <div style={{ background:`${bestForTask.color}18`, border:`1px solid ${bestForTask.color}55`,
             borderRadius:8, padding:'10px 14px', marginBottom:14 }}>
-            <span style={{ color:bestForTask.color, fontWeight:700, fontSize:13 }}>
+            <span style={{ color:bestForTask.color, fontWeight:700, fontSize:15 }}>
               ✓ Оптимально для «{TASKS.find(t=>t.id===selectedTask)?.label}»:
             </span>
-            <span style={{ color:C.text, fontSize:13, marginLeft:8 }}>{bestForTask.label}</span>
-            <span style={{ color:C.text3, fontSize:11, marginLeft:8 }}>
+            <span style={{ color:C.text, fontSize:15, marginLeft:8 }}>{bestForTask.label}</span>
+            <span style={{ color:C.text3, fontSize:13, marginLeft:8 }}>
               — рейтинг {Math.round(matrix.find(m=>m.robot.id===bestForTask.id)?.scores[selectedTask]*100)}%
             </span>
           </div>
 
           {/* Таблица */}
           <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+            <table style={{ width:'100%', borderCollapse:'collapse', fontSize:14 }}>
               <thead>
                 <tr style={{ background:C.bg3 }}>
                   <th style={{ padding:'8px 12px', textAlign:'left', color:C.text2,
-                    fontSize:11, fontWeight:700, borderBottom:`1px solid ${C.border}` }}>
+                    fontSize:13, fontWeight:700, borderBottom:`1px solid ${C.border}` }}>
                     Платформа
                   </th>
                   {TASKS.map(t => (
                     <th key={t.id} style={{
                       padding:'8px 10px', textAlign:'center', color: selectedTask===t.id ? C.accent : C.text2,
-                      fontSize:11, fontWeight:700, borderBottom:`1px solid ${C.border}`,
+                      fontSize:13, fontWeight:700, borderBottom:`1px solid ${C.border}`,
                       background: selectedTask===t.id ? '#243050' : 'transparent',
                     }}>
                       {t.icon}<br/>{t.label}
@@ -276,7 +276,7 @@ export default function PlatformTab({ params, setParam }) {
                     <td style={{ padding:'7px 12px', borderBottom:`1px solid ${C.border}` }}>
                       <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                         <div style={{ width:10, height:10, borderRadius:'50%', background:r.color, flexShrink:0 }}/>
-                        <span style={{ color: r.id===params.robotType ? r.color : C.text, fontSize:12 }}>
+                        <span style={{ color: r.id===params.robotType ? r.color : C.text, fontSize:14 }}>
                           {r.label}
                         </span>
                       </div>
@@ -293,7 +293,7 @@ export default function PlatformTab({ params, setParam }) {
             {[[C.green,'≥70% — отлично'],[C.orange,'45–69% — пригодно'],[C.red,'<45% — ограничено']].map(([c,l]) => (
               <div key={l} style={{ display:'flex', alignItems:'center', gap:5 }}>
                 <div style={{ width:10, height:10, borderRadius:2, background:c }}/>
-                <span style={{ color:C.text3, fontSize:11 }}>{l}</span>
+                <span style={{ color:C.text3, fontSize:13 }}>{l}</span>
               </div>
             ))}
           </div>
@@ -302,7 +302,7 @@ export default function PlatformTab({ params, setParam }) {
         {/* ПРАВАЯ: Сравнение по критерию */}
         <div style={{ width:300, flexShrink:0, borderLeft:`1px solid ${C.border}`,
           padding:'12px 14px', display:'flex', flexDirection:'column', overflowY:'auto' }}>
-          <div style={{ color:C.accent, fontWeight:700, fontSize:13, marginBottom:10 }}>
+          <div style={{ color:C.accent, fontWeight:700, fontSize:15, marginBottom:10 }}>
             📊 Сравнение платформ
           </div>
 
@@ -311,7 +311,7 @@ export default function PlatformTab({ params, setParam }) {
             {CRITERIA.map(c => (
               <button key={c.id} onClick={() => setSelectedCrit(c.id)} style={{
                 padding:'6px 10px', borderRadius:6, border:'none', textAlign:'left',
-                fontSize:11, cursor:'pointer',
+                fontSize:13, cursor:'pointer',
                 background: selectedCrit===c.id ? C.accent : C.bg3,
                 color:      selectedCrit===c.id ? '#0d1525' : C.text3,
                 fontWeight: selectedCrit===c.id ? 700 : 400,
@@ -325,12 +325,12 @@ export default function PlatformTab({ params, setParam }) {
               <BarChart data={barData} layout="vertical"
                 margin={{ top:0, right:30, bottom:0, left:0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.border} horizontal={false}/>
-                <XAxis type="number" tick={{ fill:C.text3, fontSize:8 }} axisLine={false} tickLine={false}/>
-                <YAxis type="category" dataKey="name" tick={{ fill:C.text2, fontSize:8 }}
+                <XAxis type="number" tick={{ fill:C.text3, fontSize:10 }} axisLine={false} tickLine={false}/>
+                <YAxis type="category" dataKey="name" tick={{ fill:C.text2, fontSize:10 }}
                   width={55} axisLine={false} tickLine={false}/>
                 <Tooltip
                   formatter={(v, _, p) => [`${v} ${crit.unit}`, p.payload.full]}
-                  contentStyle={{ background:C.bg2, border:`1px solid ${C.border}`, fontSize:10 }}
+                  contentStyle={{ background:C.bg2, border:`1px solid ${C.border}`, fontSize:12 }}
                   labelStyle={{ display:'none' }}
                 />
                 <Bar dataKey="value" radius={3} barSize={14}>
@@ -343,7 +343,7 @@ export default function PlatformTab({ params, setParam }) {
           {/* Текущая платформа: ключевые параметры */}
           <div style={{ background:C.bg3, borderRadius:8, padding:'10px 12px',
             border:`1px solid ${robot.color}44`, marginTop:8 }}>
-            <div style={{ color:robot.color, fontWeight:700, fontSize:13, marginBottom:8 }}>
+            <div style={{ color:robot.color, fontWeight:700, fontSize:16, marginBottom:8 }}>
               {robot.label}
             </div>
             {[
@@ -356,13 +356,13 @@ export default function PlatformTab({ params, setParam }) {
             ].map(([l,v]) => (
               <div key={l} style={{ display:'flex', justifyContent:'space-between',
                 borderBottom:`1px solid ${C.border}`, padding:'5px 0' }}>
-                <span style={{ color:C.text3, fontSize:11 }}>{l}</span>
-                <span style={{ color:C.text, fontSize:11, fontWeight:600 }}>{v}</span>
+                <span style={{ color:C.text3, fontSize:13 }}>{l}</span>
+                <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>{v}</span>
               </div>
             ))}
           </div>
 
-          <div style={{ color:C.text3, fontSize:10, marginTop:10, lineHeight:1.6 }}>
+          <div style={{ color:C.text3, fontSize:12, marginTop:10, lineHeight:1.6 }}>
             {robot.desc}
           </div>
         </div>

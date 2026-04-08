@@ -74,7 +74,7 @@ export default function App() {
       <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
         {/* Sidebar */}
-        <div style={{ width:136, background: C.bg2, borderRight:`1px solid ${C.border}`,
+        <div style={{ width:160, background: C.bg2, borderRight:`1px solid ${C.border}`,
           display:'flex', flexDirection:'column', padding:'8px 0', flexShrink:0 }}>
           {TABS.map(t => {
             const active = activeTab === t.id
@@ -88,7 +88,7 @@ export default function App() {
                 transition:'all .15s', userSelect:'none',
               }}>
                 <span style={{ fontSize:17 }}>{t.icon}</span>
-                <span style={{ fontSize:11, fontWeight: active ? 700 : 400 }}>{t.label}</span>
+                <span style={{ fontSize:14, fontWeight: active ? 700 : 400 }}>{t.label}</span>
               </div>
             )
           })}
