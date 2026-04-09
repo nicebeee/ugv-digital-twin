@@ -51,10 +51,11 @@ function lngScanCross(p1, p2, lng) {
 }
 
 // Boustrophedon строго внутри полигона.
-// Автоматически выбирает направление полос по длинной оси поля:
-//   поле шире E-W → горизонтальные полосы, робот едет E-W (вдоль длины)
-//   поле выше N-S → вертикальные полосы, робот едет N-S (вдоль длины)
-function boustrophedon(polygon, widthM) {
+// sweepDir: 'auto' | 'ew' | 'ns'
+//   'auto' — по длинной оси (как раньше)
+//   'ew'   — горизонтальные полосы, робот едет E-W
+//   'ns'   — вертикальные полосы, робот едет N-S
+function boustrophedon(polygon, widthM, sweepDir = 'auto') {
   if (polygon.length < 3) return []
   const lats = polygon.map(p => p[0])
   const lngs = polygon.map(p => p[1])
@@ -62,16 +63,14 @@ function boustrophedon(polygon, widthM) {
   const minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
   const avgLat = (minLat + maxLat) / 2
   const cosLat = Math.cos(avgLat * Math.PI / 180)
-
-  const fieldHeightM = (maxLat - minLat) * 111000
-  const fieldWidthM  = (maxLng - minLng) * 111000 * cosLat
   const n = polygon.length
-
   const waypoints = []
 
-  if (fieldWidthM >= fieldHeightM) {
-    // ── Горизонтальные полосы (E-W), шагаем по lat ──────────
-    // Робот двигается вдоль длинной оси (E-W)
+  const useEW = sweepDir === 'ew' ||
+    (sweepDir === 'auto' && (maxLng - minLng) * cosLat >= (maxLat - minLat))
+
+  if (useEW) {
+    // ── Горизонтальные полосы, робот едет E-W ──
     const stepLat = widthM / 111000
     if (stepLat <= 0) return []
     let row = 0
@@ -89,8 +88,7 @@ function boustrophedon(polygon, widthM) {
       }
     }
   } else {
-    // ── Вертикальные полосы (N-S), шагаем по lng ─────────────
-    // Робот двигается вдоль длинной оси (N-S)
+    // ── Вертикальные полосы, робот едет N-S ──
     const stepLng = widthM / (111000 * cosLat)
     if (stepLng <= 0) return []
     let col = 0
@@ -257,8 +255,16 @@ export default function ControlTab({ params }) {
   const [missionPath,  setMissionPath]  = useState([])
   const [missionActive, setMissionActive] = useState(false)
 
+  // Sweep direction for boustrophedon
+  const [sweepDir, setSweepDir] = useState('auto') // 'auto' | 'ew' | 'ns'
+
   // Sprinkler
   const [sprinklerOn, setSprinklerOn] = useState(false)
+
+  // Gamepad
+  const [gamepadName, setGamepadName] = useState(null) // имя подключённого геймпада
+  const gamepadRafRef   = useRef(null)
+  const gamepadMoving   = useRef(false) // true когда стик не в нуле
 
   // ── sendCmd (no-op in demo) ───────────────────────────────
   const sendCmd = useCallback((obj) => {
@@ -360,6 +366,76 @@ export default function ControlTab({ params }) {
     wsRef.current?.close()
     clearInterval(demoIntervalRef.current)
     clearInterval(demoMoveRef.current)
+    cancelAnimationFrame(gamepadRafRef.current)
+  }, [])
+
+  // ── Gamepad polling (rAF loop) ────────────────────────────
+  // Скорость движения маркера в демо-режиме: ~3 м/с при полном стике
+  const DEMO_SPEED_LAT = 3 / 111000  // градусы/сек за 1.0 стика
+  const DEMO_SPEED_LNG_REF = useRef(3 / (111000 * Math.cos(46.84 * Math.PI / 180)))
+  const lastFrameTs = useRef(null)
+  const demoModeRef = useRef(false)
+  useEffect(() => { demoModeRef.current = demoMode }, [demoMode])
+  const wsStatusRef = useRef('disconnected')
+  useEffect(() => { wsStatusRef.current = wsStatus }, [wsStatus])
+
+  useEffect(() => {
+    const gpConnected = (e) => setGamepadName(e.gamepad.id)
+    const gpDisconnected = () => setGamepadName(null)
+    window.addEventListener('gamepadconnected',    gpConnected)
+    window.addEventListener('gamepaddisconnected', gpDisconnected)
+
+    const poll = (ts) => {
+      gamepadRafRef.current = requestAnimationFrame(poll)
+      const pads = navigator.getGamepads ? navigator.getGamepads() : []
+      const gp = [...pads].find(p => p)
+      if (!gp) { lastFrameTs.current = ts; return }
+
+      setGamepadName(prev => prev ?? gp.id)
+
+      const dt = lastFrameTs.current ? Math.min((ts - lastFrameTs.current) / 1000, 0.1) : 0.016
+      lastFrameTs.current = ts
+
+      // Стандартная раскладка:
+      // axes[0] = левый стик X, axes[1] = левый стик Y
+      // axes[2] = правый стик X (поворот), axes[3] = правый стик Y
+      const DEAD = 0.12
+      const ax = (v) => Math.abs(v) > DEAD ? v : 0
+      const vx    =  -ax(gp.axes[1] ?? 0)  // вперёд/назад (инверт Y)
+      const vy    =   ax(gp.axes[0] ?? 0)  // влево/вправо
+      const omega =   ax(gp.axes[2] ?? 0)  // поворот правым стиком
+
+      const moving = Math.abs(vx) > 0 || Math.abs(vy) > 0 || Math.abs(omega) > 0
+      gamepadMoving.current = moving
+
+      if (wsStatusRef.current === 'connected') {
+        // Реальный режим — отправляем команду на ESP32
+        if (moving) {
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ cmd: 'move', vx, vy, omega }))
+          }
+        }
+      } else if (demoModeRef.current && moving) {
+        // Демо-режим — двигаем маркер по карте
+        setRobotPos(prev => {
+          if (!prev) return prev
+          const cosLat = Math.cos(prev[0] * Math.PI / 180)
+          const newLat = prev[0] + vx * DEMO_SPEED_LAT * dt
+          const newLng = prev[1] + vy * (3 / (111000 * cosLat)) * dt
+          const pos = [newLat, newLng]
+          demoRobotPosRef.current = pos
+          return pos
+        })
+      }
+    }
+
+    gamepadRafRef.current = requestAnimationFrame(poll)
+    return () => {
+      cancelAnimationFrame(gamepadRafRef.current)
+      window.removeEventListener('gamepadconnected',    gpConnected)
+      window.removeEventListener('gamepaddisconnected', gpDisconnected)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── WebSocket connect / disconnect ────────────────────────
@@ -432,9 +508,9 @@ export default function ControlTab({ params }) {
 
   const calcMission = useCallback(() => {
     if (polygon.length < 3) return
-    const path = boustrophedon(polygon, captureWidth)
+    const path = boustrophedon(polygon, captureWidth, sweepDir)
     setMissionPath(path)
-  }, [polygon, captureWidth])
+  }, [polygon, captureWidth, sweepDir])
 
   const startMission = () => {
     const wps = missionPath.length ? missionPath : waypoints
@@ -521,7 +597,13 @@ export default function ControlTab({ params }) {
 
         {/* Joystick */}
         <div style={{ padding: '10px 12px', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ color: C.accent, fontSize: 11, fontWeight: 700, marginBottom: 8 }}>🕹 РУЧНОЕ УПРАВЛЕНИЕ</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <span style={{ color: C.accent, fontSize: 11, fontWeight: 700 }}>🕹 РУЧНОЕ УПРАВЛЕНИЕ</span>
+            {gamepadName
+              ? <span style={{ color: C.green, fontSize: 9, background: C.green + '22', border: `1px solid ${C.green}`, borderRadius: 4, padding: '1px 6px' }}>🎮 Геймпад</span>
+              : <span style={{ color: C.text3, fontSize: 9 }}>геймпад не подкл.</span>
+            }
+          </div>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
             <Joystick size={110} sticky={false} baseColor="#1a2e4a" stickColor={C.accent}
               move={handleJoystickMove} stop={handleJoystickStop} />
@@ -583,6 +665,24 @@ export default function ControlTab({ params }) {
               onChange={e => setCaptureWidth(parseFloat(e.target.value) || 0.8)}
               style={{ width: 52, background: '#141e30', border: `1px solid ${C.border}`, color: C.text, borderRadius: 5, padding: '3px 6px', fontSize: 11 }} />
             <span style={{ color: C.text3, fontSize: 10 }}>м</span>
+          </div>
+          {/* Направление полос */}
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ color: C.text3, fontSize: 10, marginBottom: 4 }}>Направление движения:</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[
+                { id: 'auto', label: '⟳ Авто' },
+                { id: 'ew',   label: '↔ E-W'  },
+                { id: 'ns',   label: '↕ N-S'  },
+              ].map(d => (
+                <button key={d.id} onClick={() => setSweepDir(d.id)} style={{
+                  flex: 1, padding: '4px 0', fontSize: 10, fontWeight: 700, borderRadius: 5, cursor: 'pointer',
+                  background: sweepDir === d.id ? C.accent + '33' : '#141e30',
+                  border: `1px solid ${sweepDir === d.id ? C.accent : C.border}`,
+                  color: sweepDir === d.id ? C.accent : C.text3,
+                }}>{d.label}</button>
+              ))}
+            </div>
           </div>
           <div style={{ color: C.text3, fontSize: 10, marginBottom: 6 }}>
             Полигон: {polygon.length} т. | Маршрут: {missionPath.length} т.
