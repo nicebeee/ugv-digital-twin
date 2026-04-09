@@ -21,6 +21,10 @@ const makePinIcon = (n, color = '#ff9800') => L.divIcon({
   html: `<div style="width:20px;height:20px;background:${color};border:2px solid #fff;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700">${n}</div>`,
   iconSize: [20, 20], iconAnchor: [10, 10], className: '',
 })
+const startIcon = L.divIcon({
+  html: `<div style="width:22px;height:22px;background:#ffd54f;border:2px solid #fff;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:13px;box-shadow:0 0 6px #ffd54faa">▶</div>`,
+  iconSize: [22, 22], iconAnchor: [11, 11], className: '',
+})
 
 // ── Palette ───────────────────────────────────────────────────
 const C = {
@@ -50,12 +54,13 @@ function lngScanCross(p1, p2, lng) {
   return null
 }
 
-// Boustrophedon строго внутри полигона.
+// Boustrophedon — возвращает ТОЛЬКО ключевые точки маршрута:
+//   по 2 точки на полосу (начало и конец), переходы между полосами — прямые.
+//   Итого: 2 × N точек вместо тысяч.
+//
 // sweepDir: 'auto' | 'ew' | 'ns'
-//   'auto' — по длинной оси (как раньше)
-//   'ew'   — горизонтальные полосы, робот едет E-W
-//   'ns'   — вертикальные полосы, робот едет N-S
-function boustrophedon(polygon, widthM, sweepDir = 'auto') {
+// startPoint: [lat, lng] — ближайший угол поля с которого начать (необязателен)
+function boustrophedon(polygon, widthM, sweepDir = 'auto', startPoint = null) {
   if (polygon.length < 3) return []
   const lats = polygon.map(p => p[0])
   const lngs = polygon.map(p => p[1])
@@ -64,71 +69,75 @@ function boustrophedon(polygon, widthM, sweepDir = 'auto') {
   const avgLat = (minLat + maxLat) / 2
   const cosLat = Math.cos(avgLat * Math.PI / 180)
   const n = polygon.length
-  const waypoints = []
+
+  // Собрать полосы: каждая = [pointA, pointB] — концы отрезка внутри полигона
+  const strips = [] // [{a:[lat,lng], b:[lat,lng]}]
 
   const useEW = sweepDir === 'ew' ||
     (sweepDir === 'auto' && (maxLng - minLng) * cosLat >= (maxLat - minLat))
 
   if (useEW) {
-    // ── Горизонтальные полосы, робот едет E-W ──
     const stepLat = widthM / 111000
     if (stepLat <= 0) return []
-    let row = 0
-    for (let lat = minLat + stepLat * 0.5; lat < maxLat; lat += stepLat, row++) {
-      const crossings = []
+    for (let lat = minLat + stepLat * 0.5; lat < maxLat; lat += stepLat) {
+      const xs = []
       for (let i = 0; i < n; i++) {
         const x = latScanCross(polygon[i], polygon[(i + 1) % n], lat)
-        if (x !== null) crossings.push(x)
+        if (x !== null) xs.push(x)
       }
-      crossings.sort((a, b) => a - b)
-      for (let k = 0; k + 1 < crossings.length; k += 2) {
-        const a = crossings[k], b = crossings[k + 1]
-        waypoints.push(row % 2 === 0 ? [lat, a] : [lat, b])
-        waypoints.push(row % 2 === 0 ? [lat, b] : [lat, a])
-      }
+      xs.sort((a, b) => a - b)
+      for (let k = 0; k + 1 < xs.length; k += 2)
+        strips.push({ a: [lat, xs[k]], b: [lat, xs[k + 1]] })
     }
   } else {
-    // ── Вертикальные полосы, робот едет N-S ──
     const stepLng = widthM / (111000 * cosLat)
     if (stepLng <= 0) return []
-    let col = 0
-    for (let lng = minLng + stepLng * 0.5; lng < maxLng; lng += stepLng, col++) {
-      const crossings = []
+    for (let lng = minLng + stepLng * 0.5; lng < maxLng; lng += stepLng) {
+      const ys = []
       for (let i = 0; i < n; i++) {
         const y = lngScanCross(polygon[i], polygon[(i + 1) % n], lng)
-        if (y !== null) crossings.push(y)
+        if (y !== null) ys.push(y)
       }
-      crossings.sort((a, b) => a - b)
-      for (let k = 0; k + 1 < crossings.length; k += 2) {
-        const a = crossings[k], b = crossings[k + 1]
-        waypoints.push(col % 2 === 0 ? [a, lng] : [b, lng])
-        waypoints.push(col % 2 === 0 ? [b, lng] : [a, lng])
-      }
+      ys.sort((a, b) => a - b)
+      for (let k = 0; k + 1 < ys.length; k += 2)
+        strips.push({ a: [ys[k], lng], b: [ys[k + 1], lng] })
     }
   }
-  return waypoints
-}
 
-// Линейная интерполяция пути: вставляет промежуточные точки через каждые stepM метров.
-// Используется только для плавного демо-движения маркера.
-function interpolatePath(path, stepM) {
-  if (path.length < 2) return path
-  const stepDeg = stepM / 111000
-  const result = [path[0]]
-  for (let i = 0; i < path.length - 1; i++) {
-    const [lat1, lng1] = path[i]
-    const [lat2, lng2] = path[i + 1]
-    const dist = Math.sqrt((lat2 - lat1) ** 2 + (lng2 - lng1) ** 2)
-    const steps = Math.max(1, Math.ceil(dist / stepDeg))
-    for (let s = 1; s <= steps; s++) {
-      const t = s / steps
-      result.push([lat1 + (lat2 - lat1) * t, lng1 + (lng2 - lng1) * t])
+  if (!strips.length) return []
+
+  // Если задана точка старта — найти ближайший конец первой полосы и
+  // переупорядочить полосы так, чтобы начать с ближайшей к startPoint.
+  if (startPoint) {
+    const dist2 = ([la, lo]) =>
+      (la - startPoint[0]) ** 2 + (lo - startPoint[1]) ** 2
+    let bestIdx = 0, bestDist = Infinity
+    strips.forEach(({ a, b }, i) => {
+      const d = Math.min(dist2(a), dist2(b))
+      if (d < bestDist) { bestDist = d; bestIdx = i }
+    })
+    // Ротируем массив полос так, чтобы ближайшая была первой
+    const rotated = [...strips.slice(bestIdx), ...strips.slice(0, bestIdx)]
+    // Проверяем — если b ближе к startPoint, чем a — переворачиваем первую полосу
+    if (dist2(rotated[0].b) < dist2(rotated[0].a)) {
+      rotated[0] = { a: rotated[0].b, b: rotated[0].a }
     }
+    strips.length = 0
+    strips.push(...rotated)
   }
-  return result
+
+  // Строим маршрут-змейку: чередуем направление полос
+  const waypoints = []
+  let flip = false
+  for (const strip of strips) {
+    waypoints.push(flip ? strip.b : strip.a)
+    waypoints.push(flip ? strip.a : strip.b)
+    flip = !flip
+  }
+  return waypoints  // только ключевые точки — 2 × N
 }
 
-// Ramer–Douglas–Peucker: упрощение пути для отрисовки
+// ── Ramer–Douglas–Peucker: упрощение пути для отрисовки ──────
 function rdp(points, epsilon) {
   if (points.length < 3) return points
   let maxDist = 0, maxIdx = 0
@@ -192,12 +201,13 @@ function genDemoTelem(tick, basePos) {
 }
 
 // ── Map click handler ─────────────────────────────────────────
-function MapClickHandler({ mode, onWaypoint, onPolygon }) {
+function MapClickHandler({ mode, onWaypoint, onPolygon, onStartPoint }) {
   useMapEvents({
     click(e) {
       const { lat, lng } = e.latlng
-      if (mode === 'waypoint') onWaypoint([lat, lng])
-      if (mode === 'polygon')  onPolygon([lat, lng])
+      if (mode === 'waypoint')    onWaypoint([lat, lng])
+      if (mode === 'polygon')     onPolygon([lat, lng])
+      if (mode === 'startpoint')  onStartPoint([lat, lng])
     },
   })
   return null
@@ -234,12 +244,14 @@ export default function ControlTab({ params }) {
   const pingTs = useRef(0)
 
   // Demo mode
-  const [demoMode, setDemoMode]   = useState(false)
+  const [demoMode, setDemoMode] = useState(false)
   const demoTick        = useRef(0)
-  const demoPathIdx     = useRef(0)
-  const demoInterpPath  = useRef([])   // интерполированный путь для плавного движения
-  const demoIntervalRef = useRef(null)
-  const demoMoveRef     = useRef(null)
+  const demoPathIdx     = useRef(0)     // индекс СЛЕДУЮЩЕЙ целевой точки
+  const demoRafRef      = useRef(null)  // RAF handle для движения маркера
+  const demoIntervalRef = useRef(null)  // setInterval для телеметрии
+
+  // Начальная точка маршрута (ручная установка на карте)
+  const [startPoint, setStartPoint] = useState(null)
 
   // Telemetry
   const [telem,   setTelem]   = useState(null)
@@ -308,56 +320,79 @@ export default function ControlTab({ params }) {
   const stopDemo = useCallback(() => {
     setDemoMode(false)
     clearInterval(demoIntervalRef.current)
-    clearInterval(demoMoveRef.current)
+    cancelAnimationFrame(demoRafRef.current)
     demoIntervalRef.current = null
-    demoMoveRef.current     = null
+    demoRafRef.current      = null
   }, [])
 
-  // Keep a ref to current robotPos so the demo interval can read it without stale closure
+  // Ref для текущей позиции робота — читается из RAF без stale closure
   const demoRobotPosRef = useRef([46.8403, 29.6433])
   useEffect(() => { if (robotPos) demoRobotPosRef.current = robotPos }, [robotPos])
 
-  // When demo activates: place robot at start of path, move smoothly along interpolated path
+  // Ref для missionPath — RAF читает его без stale closure
+  const missionPathRef = useRef([])
+  useEffect(() => { missionPathRef.current = missionPath }, [missionPath])
+
+  // When demo activates: RAF-анимация от точки к точке по missionPath
   useEffect(() => {
     if (!demoMode) {
-      clearInterval(demoMoveRef.current)
-      demoMoveRef.current = null
+      cancelAnimationFrame(demoRafRef.current)
+      demoRafRef.current = null
       return
     }
 
-    if (missionPath.length < 2) {
-      // Нет маршрута — просто стоим в центроиде полигона
+    const path = missionPathRef.current
+    if (path.length < 2) {
       const startPos = polygon.length >= 3 ? polygonCentroid(polygon) : mapCenter
       setRobotPos(startPos)
       demoRobotPosRef.current = startPos
       return
     }
 
-    // Интерполируем путь с шагом 0.5 м для плавного движения
-    const interp = interpolatePath(missionPath, 0.5)
-    demoInterpPath.current = interp
-    demoPathIdx.current    = 0
+    // Стартуем с первой точки маршрута
+    demoPathIdx.current = 1  // idx следующей ЦЕЛЕВОЙ точки
+    setRobotPos(path[0])
+    demoRobotPosRef.current = path[0]
 
-    // Стартуем с первой точки маршрута (начало поля)
-    setRobotPos(interp[0])
-    demoRobotPosRef.current = interp[0]
+    // Скорость: ~3 м/с = 3/111000 градусов/сек по lat
+    const SPEED_DEG = 3 / 111000
 
-    // Шаг каждые 150 мс → ~3.3 м/с (0.5 м / 150 мс) — реалистичная скорость UGV
-    demoMoveRef.current = setInterval(() => {
-      const path = demoInterpPath.current
+    let lastTs = null
+    const step = (ts) => {
+      demoRafRef.current = requestAnimationFrame(step)
+      if (!lastTs) { lastTs = ts; return }
+      const dt = Math.min((ts - lastTs) / 1000, 0.1)
+      lastTs = ts
+
+      const route = missionPathRef.current
+      if (!route.length) return
+
       let idx = demoPathIdx.current
-      if (idx >= path.length) {
-        // Зацикливаем маршрут
-        idx = 0
-        demoPathIdx.current = 0
-      }
-      const pos = path[idx]
-      setRobotPos(pos)
-      demoRobotPosRef.current = pos
-      demoPathIdx.current = idx + 1
-    }, 150)
+      if (idx >= route.length) { demoPathIdx.current = 0; return }
 
-    return () => clearInterval(demoMoveRef.current)
+      const cur = demoRobotPosRef.current
+      const tgt = route[idx]
+      const dLat = tgt[0] - cur[0]
+      const dLng = tgt[1] - cur[1]
+      const dist  = Math.sqrt(dLat * dLat + dLng * dLng)
+      const step_ = SPEED_DEG * dt
+
+      if (dist < step_ * 0.5) {
+        // Достигли цели — переходим к следующей точке
+        demoRobotPosRef.current = tgt
+        setRobotPos(tgt)
+        demoPathIdx.current = idx + 1 < route.length ? idx + 1 : 0
+      } else {
+        // Двигаемся к цели
+        const t = step_ / dist
+        const next = [cur[0] + dLat * t, cur[1] + dLng * t]
+        demoRobotPosRef.current = next
+        setRobotPos(next)
+      }
+    }
+    demoRafRef.current = requestAnimationFrame(step)
+
+    return () => cancelAnimationFrame(demoRafRef.current)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoMode, missionPath])
 
@@ -365,7 +400,7 @@ export default function ControlTab({ params }) {
   useEffect(() => () => {
     wsRef.current?.close()
     clearInterval(demoIntervalRef.current)
-    clearInterval(demoMoveRef.current)
+    cancelAnimationFrame(demoRafRef.current)
     cancelAnimationFrame(gamepadRafRef.current)
   }, [])
 
@@ -508,9 +543,9 @@ export default function ControlTab({ params }) {
 
   const calcMission = useCallback(() => {
     if (polygon.length < 3) return
-    const path = boustrophedon(polygon, captureWidth, sweepDir)
+    const path = boustrophedon(polygon, captureWidth, sweepDir, startPoint)
     setMissionPath(path)
-  }, [polygon, captureWidth, sweepDir])
+  }, [polygon, captureWidth, sweepDir, startPoint])
 
   const startMission = () => {
     const wps = missionPath.length ? missionPath : waypoints
@@ -684,6 +719,24 @@ export default function ControlTab({ params }) {
               ))}
             </div>
           </div>
+          {/* Точка старта */}
+          <div style={{ marginBottom: 6 }}>
+            <div style={{ color: C.text3, fontSize: 10, marginBottom: 4 }}>Точка старта (откуда начать):</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => setMapMode(mapMode === 'startpoint' ? 'idle' : 'startpoint')}
+                style={{ ...btn(mapMode === 'startpoint' ? C.yellow : '#2e4060'), flex: 1, fontSize: 10 }}>
+                {mapMode === 'startpoint' ? '● Кликни на карте' : '▶ Задать старт'}
+              </button>
+              {startPoint && (
+                <button onClick={() => setStartPoint(null)} style={{ ...btn('#2e4060'), fontSize: 10 }}>✕</button>
+              )}
+            </div>
+            {startPoint && (
+              <div style={{ color: C.yellow, fontSize: 9, marginTop: 3 }}>
+                ▶ {startPoint[0].toFixed(5)}, {startPoint[1].toFixed(5)}
+              </div>
+            )}
+          </div>
           <div style={{ color: C.text3, fontSize: 10, marginBottom: 6 }}>
             Полигон: {polygon.length} т. | Маршрут: {missionPath.length} т.
             {renderPath.length !== missionPath.length && ` (рендер: ${renderPath.length})`}
@@ -702,7 +755,7 @@ export default function ControlTab({ params }) {
           <span style={{ color: C.accent, fontSize: 11, fontWeight: 700 }}>🗺 КАРТА</span>
           <span style={{ color: C.text3, fontSize: 10 }}>
             Режим: <b style={{ color: mapMode !== 'idle' ? C.orange : C.text }}>
-              {mapMode === 'idle' ? 'просмотр' : mapMode === 'waypoint' ? 'добавление точек' : 'рисование поля'}
+              {{ idle: 'просмотр', waypoint: 'добавление точек', polygon: 'рисование поля', startpoint: 'точка старта' }[mapMode] ?? mapMode}
             </b>
           </span>
           {isDemo && (
@@ -721,7 +774,12 @@ export default function ControlTab({ params }) {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <MapClickHandler mode={mapMode} onWaypoint={addWaypoint} onPolygon={addPolygon} />
+            <MapClickHandler
+              mode={mapMode}
+              onWaypoint={addWaypoint}
+              onPolygon={addPolygon}
+              onStartPoint={(p) => { setStartPoint(p); setMapMode('idle') }}
+            />
 
             {/* Robot */}
             {robotPos && <Marker position={robotPos} icon={robotIcon} />}
@@ -743,6 +801,9 @@ export default function ControlTab({ params }) {
             {renderPath.length > 1 && (
               <Polyline positions={renderPath} color={C.purple} weight={1.5} dashArray="5 3" />
             )}
+
+            {/* Start point marker */}
+            {startPoint && <Marker position={startPoint} icon={startIcon} />}
 
             {/* Start/end markers for mission */}
             {missionPath.length > 0 && (
