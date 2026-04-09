@@ -249,7 +249,7 @@ export default function ControlTab({ params }) {
 
   // Map
   const [robotPos,   setRobotPos]   = useState(null)
-  const [mapCenter,  setMapCenter]  = useState([51.5, 31.3])
+  const [mapCenter,  setMapCenter]  = useState([46.8403, 29.6433])
   const [waypoints,  setWaypoints]  = useState([])
   const [mapMode,    setMapMode]    = useState('idle')
   const [polygon,    setPolygon]    = useState([])
@@ -308,7 +308,7 @@ export default function ControlTab({ params }) {
   }, [])
 
   // Keep a ref to current robotPos so the demo interval can read it without stale closure
-  const demoRobotPosRef = useRef([51.5, 31.3])
+  const demoRobotPosRef = useRef([46.8403, 29.6433])
   useEffect(() => { if (robotPos) demoRobotPosRef.current = robotPos }, [robotPos])
 
   // When demo activates: place robot at start of path, move smoothly along interpolated path
