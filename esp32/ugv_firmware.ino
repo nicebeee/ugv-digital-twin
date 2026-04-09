@@ -72,6 +72,7 @@ const char* WIFI_PASS = "ugv12345";
 #define DHT_TYPE    DHT22
 #define DS18B20_PIN 22      // OneWire шина (до 4 датчиков DS18B20)
 #define ACS712_PIN  34      // АЦП (ток двигателей, аналоговый)
+#define SPRINKLER_PIN 23    // Реле поливалки (HIGH = включить)
 
 // HC-SR04 (4 штуки: перед, зад, лево, право)
 #define TRIG_FRONT  5   #define ECHO_FRONT  18
@@ -207,6 +208,15 @@ void handleWsMessage(AsyncWebSocketClient* client, const String& data) {
     missionActive = false;
     waypoints.clear();
     stopMotors();
+    return;
+  }
+
+  if (strcmp(cmd, "sprinkler") == 0) {
+    bool state = doc["state"] | false;
+    digitalWrite(SPRINKLER_PIN, state ? HIGH : LOW);
+    client->text(state
+      ? "{\"type\":\"sprinkler\",\"state\":true}"
+      : "{\"type\":\"sprinkler\",\"state\":false}");
     return;
   }
 
@@ -353,6 +363,10 @@ void setup() {
 
   // DS18B20
   ds18b20.begin();
+
+  // Реле поливалки
+  pinMode(SPRINKLER_PIN, OUTPUT);
+  digitalWrite(SPRINKLER_PIN, LOW);
 
   // GPS на UART2
   gpsSerial.begin(9600, SERIAL_8N1, GPS_RX, GPS_TX);
