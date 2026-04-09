@@ -5,12 +5,14 @@ import PlatformTab     from './tabs/PlatformTab'
 import AnalysisTab     from './tabs/AnalysisTab'
 import EconomicsTab    from './tabs/EconomicsTab'
 import ConfiguratorTab from './tabs/ConfiguratorTab'
+import ControlTab      from './tabs/ControlTab'
 
 const TABS = [
   { id: 'platform',     icon: '🤖', label: 'Платформы'     },
   { id: 'analysis',     icon: '📈', label: 'Эффективность'  },
   { id: 'economics',    icon: '💰', label: 'Экономика'      },
   { id: 'configurator', icon: '🔧', label: 'Конфигуратор'   },
+  { id: 'control',      icon: '🕹', label: 'Управление'     },
 ]
 
 const C = {
@@ -47,6 +49,7 @@ export default function App() {
       case 'analysis':     return <AnalysisTab      {...sharedProps} />
       case 'economics':    return <EconomicsTab     {...sharedProps} />
       case 'configurator': return <ConfiguratorTab  {...sharedProps} />
+      case 'control':      return <ControlTab        {...sharedProps} />
       default: return null
     }
   }
