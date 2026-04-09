@@ -32,55 +32,102 @@ const C = {
 
 // ── Geometry helpers ──────────────────────────────────────────
 
-// Найти lng пересечения горизонтального сканлайна на lat с ребром p1→p2
-function scanlineCrossing(p1, p2, lat) {
-  const [lat1, lng1] = p1
-  const [lat2, lng2] = p2
+// Пересечение горизонтального сканлайна (lat=const) с ребром p1→p2 → lng
+function latScanCross(p1, p2, lat) {
+  const [lat1, lng1] = p1, [lat2, lng2] = p2
   if ((lat1 <= lat && lat < lat2) || (lat2 <= lat && lat < lat1)) {
-    const t = (lat - lat1) / (lat2 - lat1)
-    return lng1 + t * (lng2 - lng1)
+    return lng1 + (lat - lat1) / (lat2 - lat1) * (lng2 - lng1)
   }
   return null
 }
 
-// Boustrophedon строго внутри полигона (ray-casting clipping)
+// Пересечение вертикального сканлайна (lng=const) с ребром p1→p2 → lat
+function lngScanCross(p1, p2, lng) {
+  const [lat1, lng1] = p1, [lat2, lng2] = p2
+  if ((lng1 <= lng && lng < lng2) || (lng2 <= lng && lng < lng1)) {
+    return lat1 + (lng - lng1) / (lng2 - lng1) * (lat2 - lat1)
+  }
+  return null
+}
+
+// Boustrophedon строго внутри полигона.
+// Автоматически выбирает направление полос по длинной оси поля:
+//   поле шире E-W → горизонтальные полосы, робот едет E-W (вдоль длины)
+//   поле выше N-S → вертикальные полосы, робот едет N-S (вдоль длины)
 function boustrophedon(polygon, widthM) {
   if (polygon.length < 3) return []
   const lats = polygon.map(p => p[0])
-  const minLat = Math.min(...lats)
-  const maxLat = Math.max(...lats)
-  const stepLat = widthM / 111000
-  if (stepLat <= 0) return []
+  const lngs = polygon.map(p => p[1])
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats)
+  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs)
+  const avgLat = (minLat + maxLat) / 2
+  const cosLat = Math.cos(avgLat * Math.PI / 180)
+
+  const fieldHeightM = (maxLat - minLat) * 111000
+  const fieldWidthM  = (maxLng - minLng) * 111000 * cosLat
+  const n = polygon.length
 
   const waypoints = []
-  let row = 0
 
-  for (let lat = minLat + stepLat * 0.5; lat < maxLat; lat += stepLat, row++) {
-    // Найти все пересечения сканлайна с рёбрами полигона
-    const crossings = []
-    const n = polygon.length
-    for (let i = 0; i < n; i++) {
-      const p1 = polygon[i]
-      const p2 = polygon[(i + 1) % n]
-      const x = scanlineCrossing(p1, p2, lat)
-      if (x !== null) crossings.push(x)
+  if (fieldWidthM >= fieldHeightM) {
+    // ── Горизонтальные полосы (E-W), шагаем по lat ──────────
+    // Робот двигается вдоль длинной оси (E-W)
+    const stepLat = widthM / 111000
+    if (stepLat <= 0) return []
+    let row = 0
+    for (let lat = minLat + stepLat * 0.5; lat < maxLat; lat += stepLat, row++) {
+      const crossings = []
+      for (let i = 0; i < n; i++) {
+        const x = latScanCross(polygon[i], polygon[(i + 1) % n], lat)
+        if (x !== null) crossings.push(x)
+      }
+      crossings.sort((a, b) => a - b)
+      for (let k = 0; k + 1 < crossings.length; k += 2) {
+        const a = crossings[k], b = crossings[k + 1]
+        waypoints.push(row % 2 === 0 ? [lat, a] : [lat, b])
+        waypoints.push(row % 2 === 0 ? [lat, b] : [lat, a])
+      }
     }
-    crossings.sort((a, b) => a - b)
-
-    // Берём пары пересечений — отрезки внутри полигона
-    for (let k = 0; k + 1 < crossings.length; k += 2) {
-      const lngA = crossings[k]
-      const lngB = crossings[k + 1]
-      if (row % 2 === 0) {
-        waypoints.push([lat, lngA])
-        waypoints.push([lat, lngB])
-      } else {
-        waypoints.push([lat, lngB])
-        waypoints.push([lat, lngA])
+  } else {
+    // ── Вертикальные полосы (N-S), шагаем по lng ─────────────
+    // Робот двигается вдоль длинной оси (N-S)
+    const stepLng = widthM / (111000 * cosLat)
+    if (stepLng <= 0) return []
+    let col = 0
+    for (let lng = minLng + stepLng * 0.5; lng < maxLng; lng += stepLng, col++) {
+      const crossings = []
+      for (let i = 0; i < n; i++) {
+        const y = lngScanCross(polygon[i], polygon[(i + 1) % n], lng)
+        if (y !== null) crossings.push(y)
+      }
+      crossings.sort((a, b) => a - b)
+      for (let k = 0; k + 1 < crossings.length; k += 2) {
+        const a = crossings[k], b = crossings[k + 1]
+        waypoints.push(col % 2 === 0 ? [a, lng] : [b, lng])
+        waypoints.push(col % 2 === 0 ? [b, lng] : [a, lng])
       }
     }
   }
   return waypoints
+}
+
+// Линейная интерполяция пути: вставляет промежуточные точки через каждые stepM метров.
+// Используется только для плавного демо-движения маркера.
+function interpolatePath(path, stepM) {
+  if (path.length < 2) return path
+  const stepDeg = stepM / 111000
+  const result = [path[0]]
+  for (let i = 0; i < path.length - 1; i++) {
+    const [lat1, lng1] = path[i]
+    const [lat2, lng2] = path[i + 1]
+    const dist = Math.sqrt((lat2 - lat1) ** 2 + (lng2 - lng1) ** 2)
+    const steps = Math.max(1, Math.ceil(dist / stepDeg))
+    for (let s = 1; s <= steps; s++) {
+      const t = s / steps
+      result.push([lat1 + (lat2 - lat1) * t, lng1 + (lng2 - lng1) * t])
+    }
+  }
+  return result
 }
 
 // Ramer–Douglas–Peucker: упрощение пути для отрисовки
@@ -190,8 +237,9 @@ export default function ControlTab({ params }) {
 
   // Demo mode
   const [demoMode, setDemoMode]   = useState(false)
-  const demoTick   = useRef(0)
-  const demoPathIdx = useRef(0)
+  const demoTick        = useRef(0)
+  const demoPathIdx     = useRef(0)
+  const demoInterpPath  = useRef([])   // интерполированный путь для плавного движения
   const demoIntervalRef = useRef(null)
   const demoMoveRef     = useRef(null)
 
@@ -263,7 +311,7 @@ export default function ControlTab({ params }) {
   const demoRobotPosRef = useRef([51.5, 31.3])
   useEffect(() => { if (robotPos) demoRobotPosRef.current = robotPos }, [robotPos])
 
-  // When demo activates: place robot near polygon or map center, start moving along missionPath
+  // When demo activates: place robot at start of path, move smoothly along interpolated path
   useEffect(() => {
     if (!demoMode) {
       clearInterval(demoMoveRef.current)
@@ -271,25 +319,37 @@ export default function ControlTab({ params }) {
       return
     }
 
-    // Place robot at polygon centroid or mapCenter
-    const startPos = polygon.length >= 3 ? polygonCentroid(polygon) : mapCenter
-    setRobotPos(startPos)
-    demoRobotPosRef.current = startPos
-    demoPathIdx.current = 0
+    if (missionPath.length < 2) {
+      // Нет маршрута — просто стоим в центроиде полигона
+      const startPos = polygon.length >= 3 ? polygonCentroid(polygon) : mapCenter
+      setRobotPos(startPos)
+      demoRobotPosRef.current = startPos
+      return
+    }
 
-    if (missionPath.length < 2) return
+    // Интерполируем путь с шагом 0.5 м для плавного движения
+    const interp = interpolatePath(missionPath, 0.5)
+    demoInterpPath.current = interp
+    demoPathIdx.current    = 0
 
+    // Стартуем с первой точки маршрута (начало поля)
+    setRobotPos(interp[0])
+    demoRobotPosRef.current = interp[0]
+
+    // Шаг каждые 150 мс → ~3.3 м/с (0.5 м / 150 мс) — реалистичная скорость UGV
     demoMoveRef.current = setInterval(() => {
-      const idx = demoPathIdx.current
-      if (idx >= missionPath.length) {
+      const path = demoInterpPath.current
+      let idx = demoPathIdx.current
+      if (idx >= path.length) {
+        // Зацикливаем маршрут
+        idx = 0
         demoPathIdx.current = 0
-        return
       }
-      const pos = missionPath[idx]
+      const pos = path[idx]
       setRobotPos(pos)
       demoRobotPosRef.current = pos
       demoPathIdx.current = idx + 1
-    }, 800)
+    }, 150)
 
     return () => clearInterval(demoMoveRef.current)
   // eslint-disable-next-line react-hooks/exhaustive-deps
